@@ -1,14 +1,28 @@
 import BigNumber from 'bignumber.js'
 
 import { FeeHistory, Block } from '@/types'
-import { Config, EstimateOracle, EstimatedGasPrice, CalculateFeesParams, GasEstimationOptionsPayload } from './types'
+import {
+  Config,
+  EstimateOracle,
+  EstimatedGasPrice,
+  CalculateFeesParams,
+  GasEstimationOptionsPayload,
+  GasFeeEstimates,
+} from '@/services/gas-estimation/types'
 
 import { ChainId, NETWORKS } from '@/config'
 import { RpcFetcher, NodeJSCache } from '@/services'
 import { findMax, fromNumberToHex, fromWeiToGwei, getMedian } from '@/utils'
 import { BG_ZERO, DEFAULT_BLOCK_DURATION, PERCENT_MULTIPLIER } from '@/constants'
 
-import { DEFAULT_PRIORITY_FEE, PRIORITY_FEE_INCREASE_BOUNDARY, FEE_HISTORY_BLOCKS, FEE_HISTORY_PERCENTILE } from './constants'
+import {
+  DEFAULT_PRIORITY_FEE,
+  PRIORITY_FEE_INCREASE_BOUNDARY,
+  FEE_HISTORY_BLOCKS,
+  FEE_HISTORY_PERCENTILE,
+} from '@/services/gas-estimation/constants'
+
+import fetchGasEstimatesViaEthFeeHistory from '@/services/gas-estimation/fetchGasEstimatesViaEthFeeHistory'
 
 // !!! MAKE SENSE ALL CALCULATIONS IN GWEI !!!
 export class Eip1559GasPriceOracle implements EstimateOracle {
@@ -23,7 +37,9 @@ export class Eip1559GasPriceOracle implements EstimateOracle {
   private fetcher: RpcFetcher
 
   private cache: NodeJSCache<EstimatedGasPrice>
+  private perSpeedCache: NodeJSCache<GasFeeEstimates>
   private FEES_KEY = (chainId: ChainId) => `estimate-fee-${chainId}`
+  private FEES_PER_SPEED_KEY = (chainId: ChainId) => `estimate-fee-per-speed-${chainId}`
 
   constructor({ fetcher, ...options }: GasEstimationOptionsPayload) {
     this.fetcher = fetcher
@@ -36,6 +52,7 @@ export class Eip1559GasPriceOracle implements EstimateOracle {
     }
 
     this.cache = new NodeJSCache({ stdTTL: this.configuration.blockTime, useClones: false })
+    this.perSpeedCache = new NodeJSCache({ stdTTL: this.configuration.blockTime, useClones: false })
   }
 
   public async estimateFees(fallbackGasPrices?: EstimatedGasPrice): Promise<EstimatedGasPrice> {
@@ -152,5 +169,26 @@ export class Eip1559GasPriceOracle implements EstimateOracle {
 
   private checkIsGreaterThanMax(value: BigNumber): boolean {
     return value.isGreaterThanOrEqualTo(NETWORKS[this.configuration.chainId]?.maxGasPrice) || false
+  }
+
+  public async estimateFeesPerSpeed(): Promise<GasFeeEstimates | void> {
+    const cacheKey = this.FEES_PER_SPEED_KEY(this.configuration.chainId)
+    const cachedFees = await this.perSpeedCache.get(cacheKey)
+
+    if (cachedFees) {
+      return cachedFees
+    }
+
+    const estimates: GasFeeEstimates = await fetchGasEstimatesViaEthFeeHistory(this.fetcher)
+
+    if (this.configuration.shouldCache && estimates) {
+      await this.perSpeedCache.set(cacheKey, estimates)
+    }
+
+    // time estimated
+    // const { suggestedMaxPriorityFeePerGas, suggestedMaxFeePerGas } = estimates.medium
+    // const estimatedGasFeeTimeBounds = calculateTimeEstimate(suggestedMaxPriorityFeePerGas, suggestedMaxFeePerGas, estimates)
+
+    return estimates
   }
 }

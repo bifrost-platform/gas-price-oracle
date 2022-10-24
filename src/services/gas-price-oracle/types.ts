@@ -1,18 +1,21 @@
 import { RpcFetcher, GasPrice, LegacyOracle, EstimatedGasPrice, EstimateOracle, GasPriceKey } from '@/services'
+import { GasFeeEstimates } from '@/services/gas-estimation/types'
 
 export type GetTxGasParamsInput = GetGasPriceInput & {
   bumpPercent?: number
   legacySpeed?: GasPriceKey
 }
 
+export type GasPricesEip1559 = {
+  maxFeePerGas: string
+  maxPriorityFeePerGas: string
+}
+
 export type GetTxGasParamsRes =
   | {
       gasPrice: string
     }
-  | {
-      maxFeePerGas: string
-      maxPriorityFeePerGas: string
-    }
+  | GasPricesEip1559
 
 export type GetGasPriceInput = {
   isLegacy?: boolean
@@ -50,7 +53,9 @@ export interface OracleProvider {
   eip1559: EstimateOracle
   legacy: LegacyOracle
   fetcher: RpcFetcher
-  gasPrices: (payload: GetGasPriceInput) => Promise<GasPrice | EstimatedGasPrice>
-  gasPricesWithEstimate: (payload: GasPricesWithEstimateInput) => Promise<GasPriceWithEstimate>
-  getTxGasParams: (payload: GetTxGasParamsInput) => Promise<GetTxGasParamsRes>
+  gasPrices: (payload: GetGasPriceInput) => Promise<GasPrice | EstimatedGasPrice | GasFeeEstimates>
+  // gasPricesWithEstimate: (
+  //   payload: GasPricesWithEstimateInput,
+  // ) => Promise<GasPriceWithEstimate | GasPriceBySpeedValuesWithEstimate>
+  // getTxGasParams: (payload: GetTxGasParamsInput) => Promise<GetTxGasParamsRes>
 }
